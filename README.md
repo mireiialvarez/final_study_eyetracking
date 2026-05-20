@@ -42,3 +42,18 @@ This script requires:
   (file containing Keyboard Events used to retrieve participants’ responses)
 
 **Note:** The original `questions_export.tsv` file is not included in this repository due to file size limitations. The script can be reproduced using a file with the same structure exported from Tobii Pro Lab Keyboard Event
+
+## Explanatory Analysis
+
+To calculate and compile the data of the **explanatory analysis** for object and subject RCs, see:
+- `explanatory_analysis.R`
+
+This script requires:
+- `pp_long_filtred.parquet`  
+  (containing PP raw data)
+- `rc_long_filtred.parquet`  
+  (containing RC raw data)
+- `tobii_metrics.xlsx`  
+  (Excel file generated from the first-pass duration and total duration analyses, used to extract the regions for each word and sentence)
+- `ambiguous_responses.xlsx`
+- `control_accuracy_appendix_summary.xlsx`

@@ -46,7 +46,7 @@ This script requires:
 ## Exploratory Analysis
 
 To calculate and compile the data of the **exploratory analysis** for object and subject RCs, see:
-- `exploratiry_analysis.R`
+- `exploratory_analysis.R`
 
 This script requires:
 - `pp_long_filtred.parquet`  

@@ -1,17 +1,38 @@
-# Set working directory to the script's location
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-# install the needed packages for the code
-#install.packages("readxl") 
+# ANALYSIS OF EYE-TRACKING DATA 1
+# Measures: First-pass duration and total fixation duration
+# Languages: Catalan and English
+# install the needed packages for the code, only the first time.
+# install.packages("readxl")
+# install.packages ("dplyr")
+# install.packages ("nlme")
+# install.packages ("ggplot2")
+# install.packages ("lattice")
+# install.packages ("performance")
+# install.packages ("stringr")
+# install.packages ("patchwork")
+# install.packages("extrafont")
+# install.packages("lme4")
+# install.packages("lmerTest")
+# install.packages("rstudioapi")
+
 library(readxl)
 library(dplyr)
 library (nlme)
-library (ggplot2)
 library (lattice)
 library (performance)
 library(stringr)
 library(ggplot2)
 library(patchwork)
+library(extrafont)
+library(lme4)
+library(lmerTest)
+library (rstudioapi)
 
+# STEP 1: LOAD DATA AND CLASSIFY SENTENCES 
+# Set working directory to the script's location
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+# Read excel file
 df <- read_excel("tobii_metrics.xlsx")
 View (df)
 
@@ -37,6 +58,7 @@ df_final_columns <- df %>%
 
 View(df_final_columns)
 
+# STEP 2: CALCULATE METRICS FOR R3 AND R4
 # Calculating metrics for R3
 df_r3 <- df_final_columns %>%
   # Groups data by participant and sentence, preserving key variables
@@ -116,7 +138,7 @@ r4_skip_rate <- df_r4 %>%
   )
 View(r4_skip_rate)
 
-# Descriptive statistics (calculating SE and means)
+# STEP 3: DESCRIPTIVE STATISTICS (calculating SE and means)
 # R3 First-pass duration
 r3_fp_summary <- df_r3 %>%
   filter(R3_First_Pass > 0) %>%
@@ -157,10 +179,8 @@ r4_total_summary <- df_r4 %>%
     .groups = "drop"
   )
 
-# 4. Graphics (raw data) for each metric and region. 
+# STEP 4: DESCRIPTIVE PLOTS
 # Load extrafont to use Times New Roman
-#install.packages("extrafont")
-library(extrafont)
 font_import()
 loadfonts(device = "win")
 
@@ -327,6 +347,7 @@ figure4
 ggsave("Figure4_R4_TotalFixation.png", figure4,
        width = 18, height = 10, units = "cm", dpi = 300)
 
+# STEP 5: NORMALISE DATA AND STATISTICAL MODELS
 # Normalising the data before applying any statistics. 
 #Log transformation is applied to approximate normality and reduce influence outliers.
 # NAs are automatically preserved as log(NA) = NA.
@@ -379,10 +400,6 @@ shapiro.test(na.omit(df_r3$log_R3_First_Pass))
 shapiro.test(df_r3$log_R3_Total_Time |> na.omit())
 shapiro.test(df_r4$log_R4_First_Pass |> na.omit())
 shapiro.test(df_r4$log_R4_Total_Time |> na.omit())
-
-
-library(lme4)
-library(lmerTest)
 
 # LME Models
 # Condition is sum-coded so the intercept represents the grand mean and the estimate reflects the ambiguity effect directly

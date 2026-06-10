@@ -1,13 +1,21 @@
+# ANALYSIS OF EYE-TRACKING DATA 2
+# Measures: Selective Regression Path and First Pass Regression
+# Languages: Catalan and English
+#Set working directory to the script's location
 setwd (dirname(rstudioapi::getActiveDocumentContext()$path))
-
-install.packages("arrow") #only run it the first time
-install.packages ("dplyr")
-install.packages ("tidyr")
-install.packages ("readxl")
-install.packages ("stringr")
-install.packages ("duckdb")
-install.packages ("rstudioapi")
-install.packages("ggplot2")
+#Install packages, only run it the first time
+#install.packages("arrow") 
+#install.packages ("dplyr")
+#install.packages ("tidyr")
+#install.packages ("readxl")
+#install.packages ("stringr")
+#install.packages ("duckdb")
+#install.packages ("rstudioapi")
+#install.packages("ggplot2")
+#install.packages("lme4")
+#install.packages("lmerTest")
+#install.packages("extrafont")
+#install.packages("patchwork")
 library(arrow)
 library(dplyr)
 library(tidyr)
@@ -16,20 +24,27 @@ library(stringr)
 library(duckdb)
 library (rstudioapi)
 library (ggplot2)
+library(lme4)
+library(lmerTest)
+library(extrafont)
+library(patchwork)
 
+# STEP 1: MERGE PARQUET FILES + SCHEMA CHECK
+# Create the working folder and a temp folder for DuckDB
 dir.create("C:/Users/clic/Documents/mireia tfm/finalstudy, showWarnings = FALSE)
-
-
-try(dbDisconnect(con), silent = TRUE)
-
 dir.create("C:/duckdb_tmp", showWarnings = FALSE)
 
+# Close any leftover database connection from previous run
+try(dbDisconnect(con), silent = TRUE)
+
+#Open a new DuckDB connection and configure it for a low-memory machine
 con <- dbConnect(duckdb())
 dbExecute(con, "SET memory_limit='8GB'")
 dbExecute(con, "SET temp_directory='C:/duckdb_tmp'")
 dbExecute(con, "SET threads=2")
 dbExecute(con, "SET preserve_insertion_order=false")
 
+#Merge the two parquet files into one, matching columns by name
 cat("Merging final...\n")
 dbExecute(con, "
   COPY (
@@ -41,12 +56,12 @@ dbExecute(con, "
   ")
 cat("Done! data_full.parquet ready.\n")
 
+# Close and reopen the connection (clears DuckDB's internal state)
 dbDisconnect(con)
-
-
 try(dbDisconnect(con), silent = TRUE)
 con <- dbConnect(duckdb())
 
+#Post-hoc verification
 # Check schemas of both merge files
 s1 <- dbGetQuery(con, "SELECT name, type FROM parquet_schema('data_merge1.parquet')")
 s2 <- dbGetQuery(con, "SELECT name, type FROM parquet_schema('data_merge2.parquet')")
@@ -65,12 +80,10 @@ cat("Type conflicts:\n"); print(type_conflicts)
 
 dbDisconnect(con)
 
+#Set wd
 setwd ("C:/Users/clic/Documents/mireia tfm/finalstudy")
-#con <- dbConnect(duckdb())
-# Defining the function that converts a wide parquet file format into a long format with one row per fixation per AOI
-process_file <- function(con, parquet_file, output_name) {
  
-  # Find all AOI hit columns
+  # Find all AOI hit columns from the parquet file
   cat("Getting AOI hit columns for", parquet_file, "...\n")
   schema <- dbGetQuery(con, sprintf("SELECT name FROM parquet_schema('%s')", parquet_file))
   aoi_cols <- schema$name[grepl("AOI hit", schema$name)]
@@ -79,8 +92,9 @@ process_file <- function(con, parquet_file, output_name) {
   # For each AOI column, build a SELECT query that:
   # keeps only fixation rows (ignores blinks and saccades)
   # keeps only rows where the participant looked at that AOI (NA=0 and then delete rows with '0')
-  # returns AOI name as value instead of as a header
-  # also keeps Fixation point X and Y coordinates to later disambiguate repeated words
+  # extracts the AOI name as a value ("word1") instead of a column header.
+  # keeps Fixation point X and Y coordinates to later disambiguate repeated words
+  # keeps participants name, fixation index and duration
   cat("Building query for", parquet_file, "...\n")
  
   union_parts <- sapply(aoi_cols, function(col) {
@@ -141,6 +155,7 @@ dbExecute(con, "SET memory_limit='8GB'")
 dbExecute(con, "SET temp_directory='C:/duckdb_tmp'")
 dbExecute(con, "SET threads=2")
 
+#STEP 2: WIDE-TO-LONG RESHAPE
 # Run the function on both merge files
 # data_merge1 = prepositional phrase in cat and eng / data_merge2 = relative clause in cat and eng
 process_file(con, "data_merge1.parquet", "pp")
@@ -148,82 +163,7 @@ process_file(con, "data_merge2.parquet", "rc")
 
 dbDisconnect(con)
 
-
-
-
-
-
-# ------------------------------
-process_file <- function(con, parquet_file, output_name) {
-  # Find all AOI hit columns
-  cat("Getting AOI hit columns for", parquet_file, "...\n")
-  schema <- dbGetQuery(con, sprintf("SELECT name FROM parquet_schema('%s')", parquet_file))
-  aoi_cols <- schema$name[grepl("AOI hit", schema$name)]
-  cat("Found", length(aoi_cols), "AOI hit columns\n")
-  # For each AOI column, build a SELECT query that:
-  # keeps only fixation rows (ignores blinks and saccades), keeps only raw where the participant looked at that AOI (NA=0 and then delete rows with '0'), returns AOI name as value instead of as a header. 
-  cat("Building query for", parquet_file, "...\n")
-  
-  union_parts <- sapply(aoi_cols, function(col) {
-    # Clean AOI name 
-    clean_name <- gsub("AOI hit \\[|\\]", "", col)
-    clean_name <- gsub("'", "''", clean_name)
-    sprintf(
-      "SELECT \"Participant name\", \"Eye movement type\", \"Eye movement event duration\", \"Eye movement type index\", '%s' AS AOI, CAST(COALESCE(\"%s\", '0') AS INTEGER) AS hit FROM read_parquet('%s') WHERE \"Eye movement type\" = 'Fixation' AND COALESCE(\"%s\", '0') <> '0'",
-  clean_name, col, parquet_file, col
-)
-})
-
-# Combine all those SELECT queries with UNION ALL
-full_sql <- paste(union_parts, collapse = "\n UNION ALL \n")
-
-# Run the combined query and save result as a temporary DuckDB table
-cat("Creating long table...\n")
-dbExecute(con, sprintf("CREATE OR REPLACE TABLE %s_raw AS %s", output_name, full_sql))
-
-# Deduplicate: if same participant + AOI + fixation index appears more than once, keep only the first duration values.  
-cat("Deduplicating...\n")
-dbExecute(con, sprintf("
-    CREATE OR REPLACE TABLE %s_clean AS
-    SELECT
-      \"Participant name\",
-      \"Eye movement type\",
-      \"Eye movement type index\",
-      AOI,
-      FIRST(\"Eye movement event duration\") AS duration
-    FROM %s_raw
-    GROUP BY
-      \"Participant name\",
-      \"Eye movement type\",
-      \"Eye movement type index\",
-      AOI
-  ", output_name, output_name))
-
-# Save it as a small parquet file
-dbExecute(con, sprintf("
-    COPY (SELECT * FROM %s_clean)
-    TO '%s_long.parquet'
-    (FORMAT PARQUET, COMPRESSION 'SNAPPY')
-  ", output_name, output_name))
-# Print row count so we can verify it worked
-n <- dbGetQuery(con, sprintf("SELECT COUNT(*) as n FROM %s_clean", output_name))
-cat("Done!", paste0(output_name, "_long.parquet"), "- Rows:", n$n, "\n\n")
-}
-
-# Connect to DuckDB and set memory options
-con <- dbConnect(duckdb())
-dbExecute(con, "SET memory_limit='8GB'")
-dbExecute(con, "SET temp_directory='C:/duckdb_tmp'")
-dbExecute(con, "SET threads=2")
-
-# Run the function on both merge files 
-# data_merge1 = prepositional phrase in cat and eng / data_merge2 = relative clause in cat and eng
-process_file(con, "data_merge1.parquet", "pp")
-process_file(con, "data_merge2.parquet", "rc")
-
-dbDisconnect(con)
-
-# ---------------------------------------------------------------------------
+# STEP 3: FILTER FIXATION DURATIONS 
 setwd("C:/Users/clic/Documents/mireia tfm/finalstudy")
 con <- dbConnect(duckdb())
 
@@ -252,7 +192,7 @@ for (cond in c("pp", "rc")) {
 
 dbDisconnect(con)
 
-# Fix naming inconsistencies of the stimuli before merging with the xlxs (where I have the regions of each word)
+# STEP 4: FIX NAMING INCONSISTENCIES
 
 con <- dbConnect(duckdb())
 
@@ -301,7 +241,7 @@ print(dbGetQuery(con, "
 "))
 dbDisconnect(con)
 
-# Merging the Excel file, where the regions are with the raw data so that each word has its corresponding region. 
+# STEP 5: MERGE PARQUET FILES WITH EXCEL REGIONS
 setwd("C:/Users/clic/Documents/mireia tfm/finalstudy")
 
 # Load Excel
@@ -408,6 +348,7 @@ rc_regions %>% count(Condition, Language, Type)
 
 View (pp_regions)
 
+# STEP 6: DESCRIPTIVE PLOTS 
 # Calculating Selective path regression (spr) for R3 
 # spr: sum of fixation durations from first fixation on r3 until just before first fixation on r4
 
@@ -699,11 +640,6 @@ fpr_r4_combined <- bind_rows(
 spr_r3_combined %>% count(Condition, Language, Structure)
 
 # Descriptive statistics: Graphics with raw data. 
-install.packages("extrafont")
-install.packages("patchwork")
-library(extrafont)
-library(patchwork)
-
 # First import all fonts from your system
 font_import(prompt = FALSE)  # prompt = FALSE skips the confirmation
 # Load fonts
@@ -855,7 +791,7 @@ ggsave("Figure_FPR_R4.png", figure_fpr_r4, width = 18, height = 10, units = "cm"
 
 cat("All 4 figures saved!\n")
 
-#checking i did it correct. 
+#Checking  
 fpr_r4_combined %>%
   filter(!is.na(firstpass_pct)) %>%
   group_by(Condition, Language, Structure) %>%
@@ -873,7 +809,7 @@ pp_regions %>%
   select(`Eye movement type index`, AOI, Region, duration) %>%
   print(n = 30)
 
-
+# STEP 7: NORMALISE + STATISTICAL MODELS
 # Normalising the data before applying any statistics 
 # Log transformation is applied to approximate normality and reduce influence outliers to selective path regression. 
 # NA are automatically preserved as log (NA)=NA
@@ -959,10 +895,6 @@ cat("NAs in n_words_r3 for SPR:", sum(is.na(spr_r3_combined$n_words_r3)), "\n")
 cat("NAs in n_words_r4 for SPR:", sum(is.na(spr_r4_combined$n_words_r4)), "\n")
 cat("NAs in n_words_r3 for FPR:", sum(is.na(fpr_r3_combined$n_words_r3)), "\n")
 cat("NAs in n_words_r4 for FPR:", sum(is.na(fpr_r4_combined$n_words_r4)), "\n")
-install.packages("lme4")
-install.packages("lmerTest")
-library(lme4)
-library(lmerTest)
 
 # Sum coding for Condition
 # Ambiguous = -0.5, Control = 0.5
@@ -1140,11 +1072,3 @@ fpr_r4_results <- rbind(
 )
 View(fpr_r4_results)
 
-# First import all fonts from your system
-font_import(prompt = FALSE)  # prompt = FALSE skips the confirmation
-
-# Then load them
-loadfonts(device = "win")
-
-# Check if Times New Roman is now available
-fonts()[grep("Times", fonts())]

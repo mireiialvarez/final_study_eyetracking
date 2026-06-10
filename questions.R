@@ -1,10 +1,30 @@
-setwd (dirname(rstudioapi::getActiveDocumentContext()$path))
+# COMPREHENSION QUESTIONS ANSWERS
 
+#Install packages, only run it the first time
+#install.packages ("dplyr")
+#install.packages ("rstudioapi")
+#install.packages("data.table")
+#install.packages ("tidyr")
+#install.packages("writexl")
+#install.packages ("readxl")
+#install.packages("ggplot2")
+#install.packages("extrafont")
+
+library(dplyr)
 library (rstudioapi)
+library(data.table)
+library(tidyr)
+library(writexl)
+library(readxl)
+library(ggplot2)
+library(extrafont)
 
+# STEP 1: LOAD AND CLEAN KEYBOARD RESPONSES
+# Set working directory 
+setwd (dirname(rstudioapi::getActiveDocumentContext()$path))
 getwd()
 
-# read the columns of the tsv
+# Read the columns of the tsv
 data <- read.delim ("questions_export.tsv")
 names (data)
 # Check what we have in the Presented.Media.name and Event columns
@@ -17,9 +37,6 @@ keyboard_events <- data[data$Event == "KeyboardEvent", ]
 # View them
 View(keyboard_events)
 
-
-library(dplyr)
-
 # Separate stimulus rows (have media name) and keyboard events
 stimulus_intervals <- data %>%
   filter(Presented.Media.name != "" & !is.na(Presented.Media.name)) %>%
@@ -30,8 +47,6 @@ keyboard_events <- data %>%
   filter(Event == "KeyboardEvent")
 
 # Fill stimulus name by nearest preceding timestamp
-install.packages("data.table")
-library(data.table)
 setDT(data)
 
 # Forward fill the stimulus name
@@ -39,9 +54,6 @@ data[, Presented.Media.name.filled := nafill(
   fifelse(Presented.Media.name == "", NA_character_, Presented.Media.name),
   type = "locf"
 )]
-
-library(dplyr)
-library(tidyr)
 
 keyboard_filled <- data %>%
   mutate(Presented.Stimulus.name = na_if(Presented.Stimulus.name, ""),
@@ -84,17 +96,16 @@ response_counts <- keyboard_filled %>%
 
 View(response_counts)
 
+# STEP 2: EXPORT AND RELOAD RESPONSE COUNTS
 # Save this as an excel to add the meaning of each response since they differ depending on the stimuli. 
-install.packages("writexl")
-library(writexl)
 write_xlsx(response_counts, "response_counts.xlsx")
 
 #Upload the xl again with the meanings added. 
-library(readxl)
 response_counts_labeled <- read_excel("response_counts.xlsx")
 
 View(response_counts_labeled)
 
+# STEP 3: CONTROL SENTENCE ACCURACY
 # Calculate accuracy of control sentences x language and type of ambiguity 
 control_accuracy <- response_counts_labeled %>%
   filter(Type == "Control") %>%
@@ -108,10 +119,7 @@ control_accuracy <- response_counts_labeled %>%
 
 View(control_accuracy)
 
-# Plot accuracy results
-library(ggplot2)
 # Load fonts
-library(extrafont)
 loadfonts(device = "win")
 fonts ()
 
@@ -119,7 +127,7 @@ fonts ()
 control_accuracy <- control_accuracy %>%
   mutate(Group = paste0(Condition, " ", Language))
 
-# Plot it
+# Plot accuracy results
 p_accuracy <- ggplot(control_accuracy, aes(x = Group, y = mean_accuracy, fill = Group)) +
   geom_bar(stat = "identity") +
   scale_y_continuous(limits = c(0, 100)) +
@@ -179,6 +187,7 @@ View(control_items)
 
 write_xlsx(control_items, "control_accuracy_appendix.xlsx")
 
+#STEP 4: AMBIGUOUS SENTENCE RESPONSE DISTRIBUTION
 # Creating two tables: one for PP and the other for RC for ambiguous sentences. 
 # Calculate % of participants whose chose NP vs VP or HA vs LA regardless of which key (L/R) corresponded to each reading in that sentence. 
 # PP table: columns = Stimulus, Language, NP att. %, VP att. %

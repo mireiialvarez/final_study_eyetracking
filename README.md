@@ -43,10 +43,10 @@ This script requires:
 
 **Note:** The original `questions_export.tsv` file is not included in this repository due to file size limitations. The script can be reproduced using a file with the same structure exported from Tobii Pro Lab Keyboard Event
 
-## Explanatory Analysis
+## Exploratory Analysis
 
-To calculate and compile the data of the **explanatory analysis** for object and subject RCs, see:
-- `explanatory_analysis.R`
+To calculate and compile the data of the **exploratory analysis** for object and subject RCs, see:
+- `exploratiry_analysis.R`
 
 This script requires:
 - `pp_long_filtred.parquet`  
